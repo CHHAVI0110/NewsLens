@@ -1,5 +1,5 @@
 # NewsLens
-# 📰 NewsLens – News Research Tool using LangChain & LLaMA3
+
 
 NewsLens is an AI-powered research assistant that lets you input **news article URLs**, then **summarizes and answers questions** using **LangChain**, **Ollama (LLaMA3)**, **FAISS**, and **Streamlit**.
 
