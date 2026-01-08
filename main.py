@@ -11,12 +11,11 @@ from langchain_community.vectorstores import FAISS
 
 from dotenv import load_dotenv
 load_dotenv()
-# ---------------- SESSION STATE INIT ---------------- #
+
 if "processed" not in st.session_state:
     st.session_state.processed = False
 
 
-# ---------------- UI STYLES ---------------- #
 st.markdown("""
 <style>
 .stApp { background-color: #FFF0F5; }
@@ -58,7 +57,7 @@ input[type="text"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- HEADER ---------------- #
+
 with st.container():
     st.markdown("""
     <div style="background-color:#FFE4EC;border-radius:15px;
@@ -68,7 +67,7 @@ with st.container():
     </div>
     """, unsafe_allow_html=True)
 
-# ---------------- SIDEBAR ---------------- #
+
 st.sidebar.title("NEWS ARTICLE URLS")
 urls = [st.sidebar.text_input(f"URL {i+1}") for i in range(3)]
 valid_urls = [u.strip() for u in urls if u.strip()]
@@ -77,13 +76,12 @@ process_url_clicked = st.sidebar.button("Process URLS")
 file_path = "faiss_store_ollama"
 main_placeholder = st.empty()
 
-# ---------------- PROCESS URLS ---------------- #
 if process_url_clicked:
     if not valid_urls:
         st.error("Enter at least one URL.")
         st.stop()
 
-    # HARD LIMIT (IMPORTANT)
+    
     valid_urls = valid_urls[:2]
 
     main_placeholder.markdown("""
@@ -140,8 +138,6 @@ if process_url_clicked:
     """, unsafe_allow_html=True)
     st.session_state.processed = True
 
-# ---------------- QUERY SECTION ---------------- #
-# ---------------- QUERY SECTION ---------------- #
 st.markdown("""
 <h3 style='color:#6C5B7B;'>Ask a query related to the articles</h3>
 """, unsafe_allow_html=True)
@@ -191,3 +187,4 @@ if query and st.session_state.processed:
         {result["answer"]}
     </div>
     """, unsafe_allow_html=True)
+
