@@ -1,161 +1,193 @@
 import os
-import streamlit as st
-import pickle
 import time
-import langchain
+import streamlit as st
+
 from langchain_community.llms import Ollama
 from langchain.chains import RetrievalQAWithSourcesChain
-from langchain.chains.qa_with_sources.loading import load_qa_with_sources_chain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import UnstructuredURLLoader
+from langchain_community.document_loaders import WebBaseLoader
 from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from dotenv import load_dotenv
 load_dotenv()
+# ---------------- SESSION STATE INIT ---------------- #
+if "processed" not in st.session_state:
+    st.session_state.processed = False
+
+
+# ---------------- UI STYLES ---------------- #
 st.markdown("""
-    <style>
-    /* Background & main layout */
-    .stApp {
-        background-color: #FFF0F5;
-    }
+<style>
+.stApp { background-color: #FFF0F5; }
 
-    /* Sidebar background */
-    [data-testid="stSidebar"] {
-        background-color: #FADADD;
-    }
+[data-testid="stSidebar"] { background-color: #FADADD; }
 
-    /* Sidebar title: NEWS ARTICLE URLS */
-    section[data-testid="stSidebar"] h1 {
-        color: #FC8EAC ;
-        font-size: 1.5rem;
-    }
+section[data-testid="stSidebar"] h1 {
+    color: #FC8EAC;
+    font-size: 1.5rem;
+}
 
-    /* Button: Process URLS */
-    button[kind="secondary"] {
-        color: white !important;
-        background-color: #FC8EAC !important; /* Flamingo Pink */
-        border: none;
-        border-radius: 8px;
-    }
+button[kind="secondary"] {
+    color: white !important;
+    background-color: #FC8EAC !important;
+    border-radius: 8px;
+}
 
-    button[kind="secondary"]:hover {
-        background-color: #F88379 !important; /* Coral Pink on hover */
-    }
+button[kind="secondary"]:hover {
+    background-color: #F88379 !important;
+}
 
-    /* Text input label: QUESTIONS */
-    label {
-        color: #6C5B7B !important; /* Muted Violet */
-        font-weight: bold;
-    }
+label {
+    color: #6C5B7B !important;
+    font-weight: bold;
+}
 
-    /* Center block content */
-    .block-container {
-        text-align: center;
-        padding-top: 2rem;
-    }
-    
-    input[type="text"] {
+.block-container {
+    text-align: center;
+    padding-top: 2rem;
+}
+
+input[type="text"] {
     font-size: 1.1rem !important;
     color: #6C5B7B !important;
     background-color: #FFF0F5 !important;
     border: 1px solid #FC8EAC !important;
     border-radius: 10px !important;
-    padding: 10px !important;
-    width: 100% !important;
 }
-input::placeholder {
-    color: #8A2BE2;
-    font-weight: 500;
-}
-
-    </style>
+</style>
 """, unsafe_allow_html=True)
 
+# ---------------- HEADER ---------------- #
 with st.container():
     st.markdown("""
-    <div style="
-        background-color: #FFE4EC;
-        border-radius: 15px;
-        padding: 15px 20px;
-        margin: 20px auto;
-        max-width: 320;
-        text-align: center;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    ">
-        <h1 style='color: #FC8EAC; margin-bottom: 10px;'>NEWS RESEARCH TOOL 📰</h1>
+    <div style="background-color:#FFE4EC;border-radius:15px;
+    padding:15px 20px;margin:20px auto;max-width:320px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+        <h1 style='color:#FC8EAC;'>NEWSLENS 📰</h1>
     </div>
     """, unsafe_allow_html=True)
 
+# ---------------- SIDEBAR ---------------- #
 st.sidebar.title("NEWS ARTICLE URLS")
-
 urls = [st.sidebar.text_input(f"URL {i+1}") for i in range(3)]
 valid_urls = [u.strip() for u in urls if u.strip()]
 
 process_url_clicked = st.sidebar.button("Process URLS")
-if process_url_clicked and not valid_urls:
-    st.error("Enter at least one URL.")
-    st.stop()
+file_path = "faiss_store_ollama"
+main_placeholder = st.empty()
 
-file_path ="faiss_store_ollama"
-
-main_placeholder =st.empty()
-
-
+# ---------------- PROCESS URLS ---------------- #
 if process_url_clicked:
-   loader = UnstructuredURLLoader(urls=valid_urls)
-   main_placeholder.text("Data Loading....Started...")
-   data = loader.load()
-   if not data:
-       st.error("No readable text found at those URLs.")
-       st.stop()
-
-   #spliting dataset
-   text_splitter=RecursiveCharacterTextSplitter(
-       separators=['\n\n','\n','.',','],
-       chunk_size=1000
-   )
-   main_placeholder.text("Text Splitter...Started...")
-   docs=text_splitter.split_documents(data)
-   if not docs:
-        st.error("Text splitter produced zero chunks.")
+    if not valid_urls:
+        st.error("Enter at least one URL.")
         st.stop()
-   # create embeddings
-   embeddings = OllamaEmbeddings(model="llama3")
-   vectorindex_ollama = FAISS.from_documents(docs, embeddings)
 
-   vectorindex_ollama = FAISS.from_documents(docs, embeddings)
-   vectorindex_ollama.save_local(file_path)
+    # HARD LIMIT (IMPORTANT)
+    valid_urls = valid_urls[:2]
 
+    main_placeholder.markdown("""
+    <div style="background-color:#E6F2FF;color:#0B2C4A;
+    padding:14px;border-radius:12px;font-weight:700;">
+    📥 Data loading started...
+    </div>
+    """, unsafe_allow_html=True)
+
+    start = time.time()
+    loader = WebBaseLoader(valid_urls)
+    data = loader.load()
+    st.write("URL loading time:", round(time.time() - start, 2), "seconds")
+
+    if not data:
+        st.error("No readable content found.")
+        st.stop()
+
+    main_placeholder.markdown("""
+    <div style="background-color:#E6F2FF;color:#0B2C4A;
+    padding:14px;border-radius:12px;font-weight:700;">
+    ✂️ Text splitting started...
+    </div>
+    """, unsafe_allow_html=True)
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100
+    )
+    docs = text_splitter.split_documents(data)
+
+    if not docs:
+        st.error("No text chunks created.")
+        st.stop()
+
+    docs = docs[:40]
+
+    main_placeholder.markdown("""
+    <div style="background-color:#E6F2FF;color:#0B2C4A;
+    padding:14px;border-radius:12px;font-weight:700;">
+    🧠 Creating embeddings...
+    </div>
+    """, unsafe_allow_html=True)
+
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    vectorindex_ollama = FAISS.from_documents(docs, embeddings)
+    vectorindex_ollama.save_local(file_path)
+
+    main_placeholder.markdown("""
+    <div style="background-color:#DFF6DD;color:#1E4620;
+    padding:14px;border-radius:12px;font-weight:700;">
+    ✅ Processing complete!
+    </div>
+    """, unsafe_allow_html=True)
+    st.session_state.processed = True
+
+# ---------------- QUERY SECTION ---------------- #
+# ---------------- QUERY SECTION ---------------- #
 st.markdown("""
-<h7 style='color: #6C5B7B; text-align: center; font-size: 1.5rem;'>
-    Ask a query related to the articles
-</h7>
+<h3 style='color:#6C5B7B;'>Ask a query related to the articles</h3>
 """, unsafe_allow_html=True)
 
-query = st.text_input(" ", placeholder="Type your query here...")
-if query:
-    if not os.path.exists(file_path):
-        st.error("Vector store not found — click 'Process URLS' first.")
-        st.stop()
+query = st.text_input(
+    " ",
+    placeholder="Process URLs first, then ask your question...",
+    disabled=not st.session_state.processed
+)
 
-    embeddings = OllamaEmbeddings(model="llama3")
-    vectorstore = FAISS.load_local(file_path, embeddings,allow_dangerous_deserialization=True)
-    llm = Ollama(model="llama3")
-    chain= RetrievalQAWithSourcesChain.from_llm(llm=llm, retriever=vectorstore.as_retriever())
-    result= chain({"question": query},return_only_outputs=True)
-    st.header("Answer")
+if query and st.session_state.processed:
+
+    with st.spinner("🔎 Searching for answer..."):
+        embeddings = OllamaEmbeddings(model="nomic-embed-text")
+
+        vectorstore = FAISS.load_local(
+            file_path,
+            embeddings,
+            allow_dangerous_deserialization=True
+        )
+
+        llm = Ollama(model="llama3")
+
+        chain = RetrievalQAWithSourcesChain.from_llm(
+            llm=llm,
+            retriever=vectorstore.as_retriever(),
+
+        )
+
+        result = chain(
+            {"question": query},
+            return_only_outputs=True
+        )
+
     st.markdown(f"""
-        <div style="
-            background-color: #fdf6f9;
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #f5c2cc;
-            margin-top: 20px;
-            font-size: 1.1rem;
-            color: #4B4453;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        ">
-            <strong>Answer:</strong><br>{result["answer"]}
-        </div>
+    <div style="
+        background-color:#fdf6f9;
+        padding:20px;
+        border-radius:12px;
+        border:1px solid #f5c2cc;
+        font-size:1.1rem;
+        color:#4B4453;
+        margin-top:20px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.05);
+    ">
+        <strong>Answer:</strong><br>
+        {result["answer"]}
+    </div>
     """, unsafe_allow_html=True)
